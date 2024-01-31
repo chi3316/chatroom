@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"sync"
 )
@@ -28,7 +29,7 @@ func NewService(ip string, port int) *Server {
 }
 
 // 监听Message广播消息channel的goroutine ,一旦有消息就全部发送给全部的在线user
-func (this *Server) ListenMessager() {
+func (this *Server) ListenMessage() {
 	msg := <-this.Message
 	//将msg发送给全部的在线用户
 	this.mapLock.Lock()
@@ -46,7 +47,6 @@ func (this *Server) BroadCast(user *User, msg string) {
 
 // Handler 处理接收后的数据
 func (this *Server) Handler(conn net.Conn) {
-	fmt.Println("连接建立成功")
 	user := NewUser(conn)
 	//用户上线，将用户加到onlineMap中
 	this.mapLock.Lock()
@@ -56,6 +56,28 @@ func (this *Server) Handler(conn net.Conn) {
 
 	//广播当前用户上线的消息
 	this.BroadCast(user, "已上线")
+
+	//接收用户发送的消息并广播
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, err := conn.Read(buf)
+			if n == 0 {
+				this.BroadCast(user, "已下线")
+				return
+			}
+
+			if err != nil && err != io.EOF {
+				fmt.Println("Conn Read err", err)
+			}
+
+			//提取用户信息，去除"\n"
+			msg := string(buf[:n-1])
+			//将得到的信息进行广播
+			fmt.Println(msg)
+			this.BroadCast(user, msg)
+		}
+	}()
 
 	//当前handle阻塞·
 	select {}
@@ -73,7 +95,7 @@ func (this *Server) Start() {
 	//close listen socket
 	defer listener.Close()
 	//启动监听Message的goroutine
-	go this.ListenMessager()
+	go this.ListenMessage()
 	//accept
 	for {
 		conn, err := listener.Accept()
