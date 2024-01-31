@@ -47,15 +47,9 @@ func (this *Server) BroadCast(user *User, msg string) {
 
 // Handler 处理接收后的数据
 func (this *Server) Handler(conn net.Conn) {
-	user := NewUser(conn)
+	user := NewUser(conn, this)
 	//用户上线，将用户加到onlineMap中
-	this.mapLock.Lock()
-	this.OnlineMap[user.Name] = user
-	fmt.Println("[" + user.Addr + "]" + user.Name + ":" + "上线成功")
-	this.mapLock.Unlock()
-
-	//广播当前用户上线的消息
-	this.BroadCast(user, "已上线")
+	user.Online()
 
 	//接收用户发送的消息并广播
 	go func() {
@@ -63,19 +57,17 @@ func (this *Server) Handler(conn net.Conn) {
 		for {
 			n, err := conn.Read(buf)
 			if n == 0 {
-				this.BroadCast(user, "已下线")
+				user.Offline()
 				return
 			}
-
 			if err != nil && err != io.EOF {
 				fmt.Println("Conn Read err", err)
 			}
 
 			//提取用户信息，去除"\n"
 			msg := string(buf[:n-1])
-			//将得到的信息进行广播
-			fmt.Println(msg)
-			this.BroadCast(user, msg)
+			//用户针对msg进行消息处理
+			user.DoMessage(msg)
 		}
 	}()
 
@@ -103,7 +95,6 @@ func (this *Server) Start() {
 			fmt.Println("listener accept err", err)
 			continue
 		}
-
 		//do handler
 		go this.Handler(conn)
 	}
