@@ -17,7 +17,7 @@ type Server struct {
 	Message chan string
 }
 
-// 创建一个Server的接口
+// NewService 创建一个Server的接口
 func NewService(ip string, port int) *Server {
 	server := &Server{
 		Ip:        ip,
@@ -28,18 +28,20 @@ func NewService(ip string, port int) *Server {
 	return server
 }
 
-// 监听Message广播消息channel的goroutine ,一旦有消息就全部发送给全部的在线user
+// ListenMessage 监听Message广播消息channel的goroutine ,一旦有消息就全部发送给在线user
 func (this *Server) ListenMessage() {
-	msg := <-this.Message
-	//将msg发送给全部的在线用户
-	this.mapLock.Lock()
-	for _, cil := range this.OnlineMap {
-		cil.C <- msg
+	for {
+		msg := <-this.Message
+		//将msg发送给全部的在线用户
+		this.mapLock.Lock()
+		for _, cil := range this.OnlineMap {
+			cil.C <- msg
+		}
+		this.mapLock.Unlock()
 	}
-	this.mapLock.Unlock()
 }
 
-// 广播消息的方法
+// BroadCast 创建广播消息内容的方法
 func (this *Server) BroadCast(user *User, msg string) {
 	sendMsg := "[" + user.Addr + "]" + user.Name + ":" + msg
 	this.Message <- sendMsg
@@ -50,7 +52,6 @@ func (this *Server) Handler(conn net.Conn) {
 	user := NewUser(conn, this)
 	//用户上线，将用户加到onlineMap中
 	user.Online()
-
 	//接收用户发送的消息并广播
 	go func() {
 		buf := make([]byte, 4096)
@@ -65,13 +66,15 @@ func (this *Server) Handler(conn net.Conn) {
 			}
 
 			//提取用户信息，去除"\n"
-			msg := string(buf[:n-1])
+			//msg := string(buf[:n-1])
+			msg := string(buf)
+			//fmt.Println(msg)
 			//用户针对msg进行消息处理
 			user.DoMessage(msg)
 		}
 	}()
 
-	//当前handle阻塞·
+	//当前handle阻塞
 	select {}
 }
 
